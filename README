@@ -1,0 +1,53 @@
+MP1 README
+
+-------------------------------------------------------------------------------
+AUTHORS
+-------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+FILES
+-------------------------------------------------------------------------------
+* mp2_node.h - header file for mp2_node.c
+
+* mp2_node.c - contains all the functionality for a member.
+
+* emulnet.h - header file for emulnet.c
+
+* emulnet.c - contains all the operations for the network layer.
+
+* params.h - header file for params.c
+
+* params.c - initialization of all required parameters.
+
+* app.h - header file for app.c
+
+* app.c - source file for the Application layer. 
+
+-------------------------------------------------------------------------------
+COMPILATION
+-------------------------------------------------------------------------------
+To compile the code do:
+
+make
+
+-------------------------------------------------------------------------------
+RUNNING THE CODE
+-------------------------------------------------------------------------------
+To execute the program, from the program directory do:
+
+./app testcase\<conf-file>
+
+-------------------------------------------------------------------------------
+IMPLEMENTATION DETAILS
+-------------------------------------------------------------------------------
+
+* Join Mechanism
+The introducer is the node that has the address JOINADDR. Every other node will 
+have a different address. It is assumed that the introducer won't fail, as there 
+is no way to replace it in the current implementation. However, the functionality 
+implemented by this node can also be carried out by any other node. When the 
+introducer receives a JOINREQ message, it will reply with a JOINREP message that
+contains a list of neighbors for the new node in the system.
+
+
+
