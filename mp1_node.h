@@ -26,13 +26,13 @@ extern short PORTNUM;                /* standard portnum of server to contact. *
 
 
 /* Definition of one entry of the membership table */
-struct MemberEntry{
+typedef struct MemberEntry{
     struct address addr;                // the address of the node
     int last_local_timestamp;           // the local timestamp for the last update
-    int last_hb;                        // the heartbeat on the last update
+    int64_t last_hb;                        // the heartbeat on the last update
     int mark_fail;                      // whether the node has been marked for fail
     int mark_del;                       //whether the node has been marked for deletion
-};
+} MemberEntry;
 
 /* Miscellaneous Parameters */
 extern char *STDSTRING;

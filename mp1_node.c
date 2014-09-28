@@ -15,11 +15,26 @@
 #include "log.h"
 
 
+
+
+/* 
+Packet format
+
+    | messgetyepe | sender's address | 64bit list size | memebership list |
+
+for JOINREQ data is 64bits of membership list size + membership list
+for JOINREP data is 64bits of membership list size +membership list 
+for GOSSIP data is 64bits of membership list size + membership list
+
+*/
+
 /*
  *
  * Routines for introducer and current time.
  *
  */
+
+char * bufferTest[1000];
 
 char NULLADDR[] = {0,0,0,0,0,0};
 int isnulladdr( address *addr){
@@ -57,38 +72,79 @@ static void print_address(char* address_buf,address* addrs){
 /* This function whenever called , sends a heartbeat out to one of 
 the proccesses inside the process's membership list */
 void sendHeartbeat(member* self){
-
-
+    //UNIMPLEMENTED FOR NOW
 }
 
 
-/* Adds the node with address req_add to the local table */
-static void addNodeToTable(member* self, address* req_add){
-
+/* Adds the node with address req_add and data containing hb to the local table */
+static void addNodeToTable(member* self, address* req_add,int64_t* heartbeat){
+   //UNIMPLEMENTED FOR NOW 
 }
 
 /*Takes in a serialized repn of the member list coming from node n and 
  parses it to update your own table, also update the entry of the resp_addr */
-static void updateNodeTable(member* self, address* resp_addr,char* memberList){
-
-
-
+static void updateNodeTable(member* self, address* other_addr,char* data,int datasize){
+    
+    char debug_buffer[100];
+    int i,j;
+    int* otherListSize = (int*)data;
+    if((*otherListSize)*sizeof(MemberEntry) < (datasize-sizeof(int))){
+        LOG(&self->addr,"Bad Packet");
+        return ;
+    }
+    /*iterate over their list */
+    MemberEntry* otherList = (MemberEntry*)(otherListSize+1);
+    for(j=0;j<*otherListSize;++j){
+        int updateMade = 0;
+        /* iterate over my list */
+        for(i=1;i<self->numMemberEntries;++i){
+            if(memcmp(&otherList[j].addr,&self->memberList[i].addr,sizeof(address))==0) {
+                //update the heartbeat of the process and add a local timestamp
+                self->memberList[i].last_local_timestamp = getcurrtime();   
+                self->memberList[i].last_hb = (self->memberList[i].last_hb>otherList[j].last_hb)?self->memberList[i].last_hb:otherList[j].last_hb;
+                print_address(debug_buffer,&otherList[j].addr);
+                LOG(&self->addr,"\tUpdated the entry for %s with hb %d",debug_buffer,self->memberList[i].last_hb);
+                updateMade = 1;
+            }
+        }
+        if(!updateMade && memcmp(&otherList[j].addr,&self->memberList[0].addr,sizeof(address))!=0){
+            //this is a new node. append it at the end of the list
+            if(self->numMemberEntries<MAX_NNB){ 
+                self->memberList[self->numMemberEntries] = otherList[j];
+                self->numMemberEntries++;
+                logNodeAdd(&self->addr,&otherList[j].addr); 
+            }
+            else        
+                LOG(&self->addr,"Membership list overflow!");
+        }
+    }    
 } 
 
-/* This function sends data contained in the memebrship table
-to node with address toNode */
-static void sendMemberTable(member* self, address* toNode){
+/* This function copies a serialized repn of the memberlist into the 
+   buffer pointed to by buffer*/
+static void serializeMemberTable(member* self, char* buffer){
 
-    //right now a dummy implementation of JOINREP, just send your address
-    char * joinResp = "Hi There I am sending you a JOIONREP!";
-    int msgsize = sizeof(messagehdr)+sizeof(address);
-    messagehdr * msg = malloc(msgsize);
-    msg->msgtype = JOINREP;
-    memcpy(msg+1,&self->addr,sizeof(address));
-    MPp2psend(&self->addr,toNode,(char*)msg,msgsize);
-    free(msg);
-
+    memcpy(buffer,&self->numMemberEntries,sizeof(int)); 
+    memcpy(buffer+sizeof(int),self->memberList,sizeof(MemberEntry)*self->numMemberEntries); 
+    
 }
+
+/* Initialize the membership list */
+static void initMemberList(member* self){
+    /* Initialize to a default value of 10 at first */
+    self->memberList = (struct MemberEntry*)malloc(MAX_NNB*sizeof(MemberEntry));
+    memset(self->memberList,0,sizeof(MemberEntry)*MAX_NNB);
+
+    //add your own entry to the beg of list so it stays there
+    self->memberList[0].addr = self->addr;
+    self->memberList[0].last_hb = 0; 
+    self->memberList[0].last_local_timestamp = getcurrtime();
+    self->memberList[0].mark_fail = 0;
+    self->memberList[0].mark_del = 0;
+    self->numMemberEntries = 1;
+    
+}
+
 
 /* 
 Received a JOINREQ (joinrequest) message. This is called when
@@ -101,12 +157,12 @@ void Process_joinreq(void *env, char *data, int size)
     /* 
     Do the following thigs in here 
     1. The JOINREQ is received by the introducer
-    2. It responds back with a current copy of the membership table.
-    3. Adds the node's entry to its table
+    2. Update its own table
+    3. It responds back with a current copy of the membership table.
     */
 
     if(size<sizeof(address) ){
-        printf("Bad Packet");
+        LOG(&(((member*)(env))->addr),"Bad Packet");
         return;
     }
 
@@ -120,14 +176,19 @@ void Process_joinreq(void *env, char *data, int size)
     LOG(&self->addr,"Recived a JOINREQ from %s",addr_str);
 
     /* data now corresponds to the actual content of the message */
+    /*add the node to the local table.*/
+    updateNodeTable(self,req_addr,data,size);
 
-    //respond with your own copy of the table by sending a buffer of the size of the member lists
-    sendMemberTable(self,req_addr);
+    /* build your response ( your copy of the membership table */
+    size_t msgsize = sizeof(messagehdr)+sizeof(address)+sizeof(int)+sizeof(MemberEntry)*(self->numMemberEntries);
+    char * msg = malloc(msgsize);
+    ((messagehdr*) msg)->msgtype = JOINREP;
+    memcpy(msg+sizeof(messagehdr),&self->addr,sizeof(address));
+    serializeMemberTable(self,msg+sizeof(messagehdr)+sizeof(address));
 
-
-    //add the node to the local table.
-    addNodeToTable(self,req_addr);
-
+    /* send your respose */
+    MPp2psend(&self->addr,req_addr,(char*)msg,msgsize);
+    free(msg);
     
     return;
 }
@@ -143,7 +204,7 @@ void Process_joinrep(void *env, char *data, int size)
     form of a character buffer that represents a list of nodes and add the entries to your own list */
 
     if(size<sizeof(address) ){
-        printf("Bad Packet");
+        LOG(&(((member*)(env))->addr),"Bad Packet");
         return;
     }
 
@@ -159,9 +220,9 @@ void Process_joinrep(void *env, char *data, int size)
     /* data now points to whatever data that a node sent as we have extracted the address out */
     
     //update your local copy of the node table using the data
-    if(size>0) updateNodeTable(self,resp_addr,data);
+    if(size>0) updateNodeTable(self,resp_addr,data,size);
     else{
-        printf("Join response is empty!");
+        LOG(&self->addr,"Join response is empty!");
     }
 
     return;
@@ -234,6 +295,16 @@ int init_thisnode(member *thisnode, address *joinaddr){
     thisnode->bfailed=0;
     thisnode->inited=1;
     thisnode->ingroup=0;
+
+    /*initialize the membership list to a default size of 10*/
+    initMemberList(thisnode);
+
+    /* Init the timers */   
+    thisnode->tfail = 5;
+    thisnode->tdelete = 5;
+    thisnode->tgossip = 5;
+
+
     /* node is up! */
 
     return 0;
@@ -256,12 +327,22 @@ int finishup_thisnode(member *node){
  *
  */
 
+
+/* create JOINREQ message: format of data is msghdr|myaddr|listlen|list */
+static void createJoinReq(member* self,char*buffer){
+
+    ((messagehdr*)buffer)->msgtype=JOINREQ;
+    memcpy(buffer+sizeof(messagehdr), &self->addr, sizeof(address));
+    serializeMemberTable(self,buffer+sizeof(address)+sizeof(messagehdr));
+}
+
+
 /* 
 Introduce self to group. 
 */
 int introduceselftogroup(member *node, address *joinaddr){
     
-    messagehdr *msg;
+    char *msg;
 #ifdef DEBUGLOG
     static char s[1024];
 #endif
@@ -275,13 +356,10 @@ int introduceselftogroup(member *node, address *joinaddr){
         node->ingroup = 1;
     }
     else{
-        size_t msgsize = sizeof(messagehdr) + sizeof(address);
-        msg=malloc(msgsize);
 
-    /* create JOINREQ message: format of data is {struct address myaddr} */
-        msg->msgtype=JOINREQ;
-        memcpy((char *)(msg+1), &node->addr, sizeof(address));
-
+        size_t msgsize = sizeof(messagehdr) + sizeof(address) + sizeof(int)+ sizeof(MemberEntry)*(node->numMemberEntries);
+        char * msg=malloc(msgsize);
+        createJoinReq(node,msg);
 #ifdef DEBUGLOG
         sprintf(s, "Trying to join...");
         LOG(&node->addr, s);
@@ -321,6 +399,11 @@ Called by nodeloop().
 void nodeloopops(member *node){
 
 	/* <your code goes in here> */
+    // Over here, update the heartbeat counter and keep yourself alive;
+    node->memberList[0].last_hb++;
+    node->memberList[0].last_local_timestamp = getcurrtime();
+    node->memberList[0].mark_fail = 0;
+    node->memberList[0].mark_del = 0;
 
     return;
 }
