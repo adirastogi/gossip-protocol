@@ -73,5 +73,11 @@ void nodeloop(member *node);
 int recvloop(member *node);
 int finishup_thisnode(member *node);
 
+/* Aditya's definitions */
+
+/* This function whenever called , sends a heartbeat out to one of 
+the proccesses inside the process's membership list */
+void sendHeartbeats(struct MemberList* list);
+
 #endif /* _NODE_H_ */
 

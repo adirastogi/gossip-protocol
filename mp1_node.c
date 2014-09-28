@@ -2,7 +2,7 @@
 *
 * Progam Name: MP1. Membership Protocol
 * 
-* Code authors: <your name here>
+* Code authors: Aditya Rastogi ( arastog2 ) 
 *
 * Current file: mp1_node.c
 * About this file: Member Node Implementation
