@@ -23,6 +23,17 @@ char JOINADDR[30];                    /* address for introduction into the group
 extern char *DEF_SERVADDR;            /* server address. */
 extern short PORTNUM;                /* standard portnum of server to contact. */
 
+
+
+/* Definition of one entry of the membership table */
+struct MemberEntry{
+    struct address addr;                // the address of the node
+    int last_local_timestamp;           // the local timestamp for the last update
+    int last_hb;                        // the heartbeat on the last update
+    int mark_fail;                      // whether the node has been marked for fail
+    int mark_del;                       //whether the node has been marked for deletion
+};
+
 /* Miscellaneous Parameters */
 extern char *STDSTRING;
 
@@ -34,6 +45,16 @@ typedef struct member{
         queue inmsgq;                   // queue for incoming messages
 
         int bfailed;                    // boolean indicating if this member has failed
+        
+        /* Fields specific to the membership table that is maintatined at this node */
+        int numMemberEntries;           // the number of member entries currently in the table
+
+        struct MemberEntry* memberList; // the membership table at this node
+
+        int tfail;                      // the time after which this node marks entries as failed
+        int tdelete;                    // the time after which this node deletes a failed entry
+        int tgossip;                    // the time after which this node gossips its membership table to a random node.
+
 } member;
 
 /* Message types */
@@ -75,9 +96,6 @@ int finishup_thisnode(member *node);
 
 /* Aditya's definitions */
 
-/* This function whenever called , sends a heartbeat out to one of 
-the proccesses inside the process's membership list */
-void sendHeartbeats(struct MemberList* list);
 
 #endif /* _NODE_H_ */
 

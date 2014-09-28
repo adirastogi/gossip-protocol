@@ -7,12 +7,12 @@
 #* 
 #***********************
 
-CFLAGS =  -Wall -g
+CFLAGS = -g
 
 all: app
 
 app: mp1_node.o emulnet.o app.o log.o params.o queue.o
-	gcc -o app mp1_node.o emulnet.o app.o log.o params.o queue.o
+	gcc -g -o app mp1_node.o emulnet.o app.o log.o params.o queue.o
 
 mp1_node.o: mp1_node.c mp1_node.h emulnet.h params.h requests.h queue.h stdincludes.h log.h MPtemplate.h nodeaddr.h 
 	gcc -c mp1_node.c ${CFLAGS}
