@@ -91,7 +91,9 @@ static void sendGossip(member* self){
     }
     if(self->memberList[randnode].mark_fail==1) return /*without gossiping*/;
     else{
-        LOG(&self->addr,"Sending a GOSSIP message");
+        char debug_buffer[50];
+        print_address(debug_buffer,&self->memberList[randnode].addr);
+        LOG(&self->addr,"Sending a GOSSIP message to %s",debug_buffer);
         address* send_addr = &self->memberList[randnode].addr;
         size_t messagesize = sizeof(messagehdr) + sizeof(address) + sizeof(int) + sizeof(MemberEntry)*self->numMemberEntries;
         char* msg = malloc(messagesize);
@@ -118,21 +120,26 @@ void keepSelfAlive(member* self){
    marks up any deleted or failed entries */
 static void checkNodeTable(member* self){
     int i;
+    char debug_buffer[50];
     for(i=1;i<self->numMemberEntries;++i){
 
         if( !self->memberList[i].mark_fail ){ 
             if( (getcurrtime()-self->memberList[i].last_local_timestamp ) > self->tfail){
             /* tfail timer has expired , mark node as failed */
+                int64_t oldts = self->memberList[i].last_local_timestamp;
                 self->memberList[i].mark_fail=1;
                 self->memberList[i].last_local_timestamp = getcurrtime();
+                print_address(debug_buffer,&self->memberList[i].addr);
+                LOG(&self->addr,"\t\tMarking node %s as Failed on %d , entry last updated at %d",debug_buffer,getcurrtime(),oldts);
             }
         }else{
             /* tdelete timer has expired, mark node for deletion */
             if( (getcurrtime()-self->memberList[i].last_local_timestamp ) > self->tdelete){
                 //swap it with the last member in the list to delete it.
-#ifdef DEBUGLOG
+                int64_t oldts = self->memberList[i].last_local_timestamp;
                 logNodeRemove(&self->addr,&self->memberList[i].addr); 
-#endif
+                print_address(debug_buffer,&self->memberList[i].addr);
+                LOG(&self->addr,"\t\tMarking node %s as Deleted on %d , entry last updated at %d",debug_buffer,getcurrtime(),oldts);
                 self->memberList[i] = self->memberList[self->numMemberEntries-1];
                 self->numMemberEntries--;
             }
@@ -159,27 +166,34 @@ static void updateNodeTable(member* self, address* other_addr,char* data,int dat
     for(j=0;j<*otherListSize;++j){
         int updateMade = 0;
         
-        /* continue if this entry is not reliable */
+        /* ignore this entry if this entry is not reliable */
         if(otherList[j].mark_fail) continue;
 
         /* iterate over my list */
         for(i=1;i<self->numMemberEntries;++i){
             if( memcmp(&otherList[j].addr,&self->memberList[i].addr,sizeof(address))==0) {
-            
+                updateMade = 1;
                 /* DOUBT: if the process has been marked as failed locally and we still have a good entry from that process,
                    then can i mark this process as alive ? For now , I am doing so */   
-                if(self->memberList[i].mark_fail){   //reverse your failure decision since you got to know about the node 
-                    self->memberList[i].mark_fail =0;
-                    print_address(debug_buffer,&self->memberList[i].addr);
-                    LOG(&self->addr,"\t\tReviving the node at %s",debug_buffer);
+  
+                if(self->memberList[i].last_hb>=otherList[j].last_hb) break; //no need to update
+                else{
+                    if(!self->memberList[i].mark_fail){
+                        //update the heartbeat of the process and add a local timestamp
+                        int64_t oldhb=self->memberList[i].last_hb;
+                        self->memberList[i].last_hb = otherList[j].last_hb;
+                        self->memberList[i].last_local_timestamp = getcurrtime();   
+                        print_address(debug_buffer,&self->memberList[i].addr);
+                        LOG(&self->addr,"\t\tUpdated the entry for %s with hb_new %d vs %d hb_old",debug_buffer,self->memberList[i].last_hb,oldhb);        
+                    }else{
+                        int64_t oldhb=self->memberList[i].last_hb;
+                        self->memberList[i].last_hb = otherList[j].last_hb;
+                        self->memberList[i].last_local_timestamp = getcurrtime();   
+                        self->memberList[i].mark_fail=0; //reverse your decision as you got a greater hb
+                        print_address(debug_buffer,&self->memberList[i].addr);
+                        LOG(&self->addr,"\t\tReviving the node at %s with hb_new %d vs  %d hb_old",debug_buffer,self->memberList[i].last_hb,oldhb);
+                    }
                 }
-    
-                //update the heartbeat of the process and add a local timestamp
-                self->memberList[i].last_local_timestamp = getcurrtime();   
-                self->memberList[i].last_hb = (self->memberList[i].last_hb>otherList[j].last_hb)?self->memberList[i].last_hb:otherList[j].last_hb;
-                print_address(debug_buffer,&otherList[j].addr);
-                LOG(&self->addr,"\t\tUpdated the entry for %s with hb %d",debug_buffer,self->memberList[i].last_hb);        
-                updateMade = 1;
             }
         }
 
@@ -187,6 +201,7 @@ static void updateNodeTable(member* self, address* other_addr,char* data,int dat
             //this is a new node. append it at the end of the list
             if(self->numMemberEntries<MAX_NNB){ 
                 self->memberList[self->numMemberEntries] = otherList[j];
+                self->memberList[self->numMemberEntries].last_local_timestamp = getcurrtime(); //stamp it with a local timestamp
                 print_address(debug_buffer,&self->memberList[self->numMemberEntries].addr);
                 LOG(&self->addr,"\t\tAdded the entry for %s with hb %d",debug_buffer,self->memberList[self->numMemberEntries].last_hb);        
                 self->numMemberEntries++;
@@ -291,6 +306,7 @@ void Process_joinrep(void *env, char *data, int size)
 
     /* I can join the group now */
     self->ingroup = 1;
+    logNodeAdd(&self->addr,&self->addr);
 
     /* data now points to whatever data that a node sent as we have extracted the address out */
     
@@ -405,9 +421,10 @@ int init_thisnode(member *thisnode, address *joinaddr){
     initMemberList(thisnode);
 
     /* Init the timers */   
-    thisnode->tfail = 2;
-    thisnode->tdelete = 2;
-    thisnode->tgossip = 2;
+    /*values that work = tafail=5 , tdelete=5*/
+    thisnode->tfail =10;
+    thisnode->tdelete = 10;
+    //thisnode->tgossip = 5;
 
 
     /* node is up! */
