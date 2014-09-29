@@ -229,7 +229,7 @@ static void initMemberList(member* self){
     self->memberList[0].mark_fail = 0;
     self->memberList[0].mark_del = 0;
     self->numMemberEntries = 1;
-    
+    logNodeAdd(&self->addr,&self->addr);
 }
 
 
@@ -260,7 +260,8 @@ void Process_joinreq(void *env, char *data, int size)
     size -= sizeof(address);
     print_address(addr_str,req_addr);
 
-    LOG(&self->addr,"Recived a JOINREQ from %s",addr_str);
+    LOG(&self->addr,"Recieved a JOINREQ from %s",addr_str);
+
 
     /* data now corresponds to the actual content of the message */
     /*add the node to the local table.*/
@@ -306,7 +307,6 @@ void Process_joinrep(void *env, char *data, int size)
 
     /* I can join the group now */
     self->ingroup = 1;
-    logNodeAdd(&self->addr,&self->addr);
 
     /* data now points to whatever data that a node sent as we have extracted the address out */
     
@@ -439,6 +439,8 @@ Clean up this node.
 int finishup_thisnode(member *node){
 
 	/* <your code goes in here> */
+    //free the member list over here
+    free(node->memberList);
     return 0;
 }
 
