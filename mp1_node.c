@@ -68,18 +68,80 @@ static void print_address(char* address_buf,address* addrs){
 	sprintf(address_buf, "%d.%d.%d.%d:%d ", addr[0], addr[1], addr[2], addr[3], *(short *)&addr[4]);
 }
 
+/* This function copies a serialized repn of the memberlist into the 
+   buffer pointed to by buffer*/
+static void serializeMemberTable(member* self, char* buffer){
 
-/* This function whenever called , sends a heartbeat out to one of 
-the proccesses inside the process's membership list */
-void sendHeartbeat(member* self){
-    //UNIMPLEMENTED FOR NOW
+    memcpy(buffer,&self->numMemberEntries,sizeof(int)); 
+    memcpy(buffer+sizeof(int),self->memberList,sizeof(MemberEntry)*self->numMemberEntries); 
+    
+}
+
+/* This function picks a random node and sends it a gossip */
+static void sendGossip(member* self){
+    
+    if(self->numMemberEntries==1) return; /*without gossiping */
+    
+    int maxtries = 3;
+    int randnode;
+    while(maxtries--){
+        randnode = 1+rand()%(self->numMemberEntries-1);
+        if(self->memberList[randnode].mark_fail==1) continue;
+        else break;
+    }
+    if(self->memberList[randnode].mark_fail==1) return /*without gossiping*/;
+    else{
+        LOG(&self->addr,"Sending a GOSSIP message");
+        address* send_addr = &self->memberList[randnode].addr;
+        size_t messagesize = sizeof(messagehdr) + sizeof(address) + sizeof(int) + sizeof(MemberEntry)*self->numMemberEntries;
+        char* msg = malloc(messagesize);
+        ((messagehdr*)msg)->msgtype = GOSSIP;
+        memcpy(msg+sizeof(messagehdr),&self->addr,sizeof(address));
+        serializeMemberTable(self,msg+sizeof(messagehdr)+sizeof(address));
+        MPp2psend(&self->addr,send_addr, (char *)msg, messagesize);
+        free(msg);
+    }
+
+}
+
+/* This function updates your own hearbeat counter */
+void keepSelfAlive(member* self){
+
+    self->memberList[0].last_hb++;
+    self->memberList[0].last_local_timestamp = getcurrtime();
+    self->memberList[0].mark_fail = 0;
+    self->memberList[0].mark_del = 0;
 }
 
 
-/* Adds the node with address req_add and data containing hb to the local table */
-static void addNodeToTable(member* self, address* req_add,int64_t* heartbeat){
-   //UNIMPLEMENTED FOR NOW 
+/* This function checks the node table at a particular node and 
+   marks up any deleted or failed entries */
+static void checkNodeTable(member* self){
+    int i;
+    for(i=1;i<self->numMemberEntries;++i){
+
+        if( !self->memberList[i].mark_fail ){ 
+            if( (getcurrtime()-self->memberList[i].last_local_timestamp ) > self->tfail){
+            /* tfail timer has expired , mark node as failed */
+                self->memberList[i].mark_fail=1;
+                self->memberList[i].last_local_timestamp = getcurrtime();
+            }
+        }else{
+            /* tdelete timer has expired, mark node for deletion */
+            if( (getcurrtime()-self->memberList[i].last_local_timestamp ) > self->tdelete){
+                //swap it with the last member in the list to delete it.
+#ifdef DEBUGLOG
+                logNodeRemove(&self->addr,&self->memberList[i].addr); 
+#endif
+                self->memberList[i] = self->memberList[self->numMemberEntries-1];
+                self->numMemberEntries--;
+            }
+
+        }
+    }
+
 }
+
 
 /*Takes in a serialized repn of the member list coming from node n and 
  parses it to update your own table, also update the entry of the resp_addr */
@@ -96,23 +158,41 @@ static void updateNodeTable(member* self, address* other_addr,char* data,int dat
     MemberEntry* otherList = (MemberEntry*)(otherListSize+1);
     for(j=0;j<*otherListSize;++j){
         int updateMade = 0;
+        
+        /* continue if this entry is not reliable */
+        if(otherList[j].mark_fail) continue;
+
         /* iterate over my list */
         for(i=1;i<self->numMemberEntries;++i){
-            if(memcmp(&otherList[j].addr,&self->memberList[i].addr,sizeof(address))==0) {
+            if( memcmp(&otherList[j].addr,&self->memberList[i].addr,sizeof(address))==0) {
+            
+                /* DOUBT: if the process has been marked as failed locally and we still have a good entry from that process,
+                   then can i mark this process as alive ? For now , I am doing so */   
+                if(self->memberList[i].mark_fail){   //reverse your failure decision since you got to know about the node 
+                    self->memberList[i].mark_fail =0;
+                    print_address(debug_buffer,&self->memberList[i].addr);
+                    LOG(&self->addr,"\t\tReviving the node at %s",debug_buffer);
+                }
+    
                 //update the heartbeat of the process and add a local timestamp
                 self->memberList[i].last_local_timestamp = getcurrtime();   
                 self->memberList[i].last_hb = (self->memberList[i].last_hb>otherList[j].last_hb)?self->memberList[i].last_hb:otherList[j].last_hb;
                 print_address(debug_buffer,&otherList[j].addr);
-                LOG(&self->addr,"\tUpdated the entry for %s with hb %d",debug_buffer,self->memberList[i].last_hb);
+                LOG(&self->addr,"\t\tUpdated the entry for %s with hb %d",debug_buffer,self->memberList[i].last_hb);        
                 updateMade = 1;
             }
         }
+
         if(!updateMade && memcmp(&otherList[j].addr,&self->memberList[0].addr,sizeof(address))!=0){
             //this is a new node. append it at the end of the list
             if(self->numMemberEntries<MAX_NNB){ 
                 self->memberList[self->numMemberEntries] = otherList[j];
+                print_address(debug_buffer,&self->memberList[self->numMemberEntries].addr);
+                LOG(&self->addr,"\t\tAdded the entry for %s with hb %d",debug_buffer,self->memberList[self->numMemberEntries].last_hb);        
                 self->numMemberEntries++;
+#ifdef DEBUGLOG
                 logNodeAdd(&self->addr,&otherList[j].addr); 
+#endif
             }
             else        
                 LOG(&self->addr,"Membership list overflow!");
@@ -120,14 +200,6 @@ static void updateNodeTable(member* self, address* other_addr,char* data,int dat
     }    
 } 
 
-/* This function copies a serialized repn of the memberlist into the 
-   buffer pointed to by buffer*/
-static void serializeMemberTable(member* self, char* buffer){
-
-    memcpy(buffer,&self->numMemberEntries,sizeof(int)); 
-    memcpy(buffer+sizeof(int),self->memberList,sizeof(MemberEntry)*self->numMemberEntries); 
-    
-}
 
 /* Initialize the membership list */
 static void initMemberList(member* self){
@@ -217,6 +289,9 @@ void Process_joinrep(void *env, char *data, int size)
 
     LOG(&self->addr,"Received a JOINREP from %s",addr_str);
 
+    /* I can join the group now */
+    self->ingroup = 1;
+
     /* data now points to whatever data that a node sent as we have extracted the address out */
     
     //update your local copy of the node table using the data
@@ -228,6 +303,35 @@ void Process_joinrep(void *env, char *data, int size)
     return;
 }
 
+/* Received a GOSSIP message */
+void Process_gossip(void* env,char* data,int size){
+
+    /*Over here i take the table received in a gossip message and merge it with 
+     my own table */    
+
+    if(size<sizeof(address) ){
+        LOG(&(((member*)(env))->addr),"Bad Packet");
+        return;
+    }
+
+    char addr_str[20];
+    member *self = (member*) env;
+    address* resp_addr = (address*)data;
+    data = (char*)(resp_addr+1); 
+    size -= sizeof(address);
+    print_address(addr_str,resp_addr);
+    
+    LOG(&self->addr,"Received a GOSSIP message from %s",addr_str);
+
+    /* data now points to the actual message contents */
+    if(size>0) updateNodeTable(self,resp_addr,data,size);
+    else{
+        LOG(&self->addr,"Join response is empty!");
+    }
+    return;
+
+}
+
 
 /* 
 Array of Message handlers. 
@@ -235,7 +339,8 @@ Array of Message handlers.
 void ( ( * MsgHandler [20] ) STDCLLBKARGS )={
 /* Message processing operations at the P2P layer. */
     Process_joinreq, 
-    Process_joinrep
+    Process_joinrep,
+    Process_gossip
 };
 
 /* 
@@ -300,9 +405,9 @@ int init_thisnode(member *thisnode, address *joinaddr){
     initMemberList(thisnode);
 
     /* Init the timers */   
-    thisnode->tfail = 5;
-    thisnode->tdelete = 5;
-    thisnode->tgossip = 5;
+    thisnode->tfail = 2;
+    thisnode->tdelete = 2;
+    thisnode->tgossip = 2;
 
 
     /* node is up! */
@@ -400,10 +505,13 @@ void nodeloopops(member *node){
 
 	/* <your code goes in here> */
     // Over here, update the heartbeat counter and keep yourself alive;
-    node->memberList[0].last_hb++;
-    node->memberList[0].last_local_timestamp = getcurrtime();
-    node->memberList[0].mark_fail = 0;
-    node->memberList[0].mark_del = 0;
+    keepSelfAlive(node);
+
+    /*gossip your table to a random member in your list */
+    sendGossip(node);
+
+    /*check for expired entries in your table */
+    checkNodeTable(node);
 
     return;
 }

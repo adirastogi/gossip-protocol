@@ -65,6 +65,7 @@ typedef struct member{
 enum Msgtypes{
 		JOINREQ,			
 		JOINREP,
+        GOSSIP,
 		DUMMYLASTMSGTYPE
 };
 
