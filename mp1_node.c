@@ -423,7 +423,7 @@ int init_thisnode(member *thisnode, address *joinaddr){
     /* Init the timers */   
     /*values that work = tafail=5 , tdelete=5*/
     thisnode->tfail =10;
-    thisnode->tdelete = 10;
+    thisnode->tdelete = 20;
     //thisnode->tgossip = 5;
 
 

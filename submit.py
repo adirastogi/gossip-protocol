@@ -107,11 +107,11 @@ def challengeResponse(email, passwd, challenge):
   
 def challenge_url():
   """Returns the challenge url."""
-  return "https://class.coursera.org/" + URL + "/assignment/challenge"
+  return URL_BASE + URL + "/assignment/challenge"
 
 def submit_url():
   """Returns the submission url."""
-  return "https://class.coursera.org/" + URL + "/assignment/submit"
+  return URL_BASE + URL + "/assignment/submit"
 
 def submitSolution(email_address, ch_resp, sid, output, state, ch_aux):
   """Submits a solution to the server. Returns (result, string)."""
@@ -147,7 +147,8 @@ def source(partIdx):
 
 # Make sure you change this string to the last segment of your class URL.
 # For example, if your URL is https://class.coursera.org/pgm-2012-001-staging, set it to "pgm-2012-001-staging".
-URL = 'cloudcomputing-001'
+URL = 'cs425-001'
+URL_BASE = "https://illinois.coursera.org/"
 
 # the "Identifier" you used when creating the part
 partIds = ['mp1_part1', 'mp1_part2', 'mp1_part3']

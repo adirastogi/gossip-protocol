@@ -37,23 +37,37 @@ else
 	make
 	./app testcases/singlefailure.conf
 fi
-joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | uniq | wc -l`
+joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
 if [ $joincount -eq 100 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Join..................10/10"
 else
-	echo "Checking Join..................0/10"
+	joinfrom=`grep joined dbg.log | cut -d" " -f2 | sort -u`
+	cnt=0
+	for i in $joinfrom
+	do
+		jointo=`grep joined dbg.log | grep '^ '$i | cut -d" " -f4-7 | grep -v $i | sort -u | wc -l`
+		if [ $jointo -eq 9 ]; then
+			cnt=`expr $cnt + 1`
+		fi
+	done
+	if [ $cnt -eq 10 ]; then
+		grade=`expr $grade + 10`
+		echo "Checking Join..................10/10"
+	else
+		echo "Checking Join..................0/10"
+	fi
 fi
-failednode=`grep failed dbg.log | uniq | awk '{print $1}'`
-failcount=`grep removed dbg.log | uniq | grep $failednode | wc -l`
+failednode=`grep failed dbg.log | sort -u | awk '{print $1}'`
+failcount=`grep removed dbg.log | sort -u | grep $failednode | wc -l`
 if [ $failcount -ge 9 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Completeness..........10/10"
 else
 	echo "Checking Completeness..........0/10"
 fi
-failednode=`grep failed dbg.log | uniq | awk '{print $1}'`
-accuracycount=`grep removed dbg.log | uniq | grep -v $failednode | wc -l`
+failednode=`grep failed dbg.log | sort -u | awk '{print $1}'`
+accuracycount=`grep removed dbg.log | sort -u | grep -v $failednode | wc -l`
 if [ $accuracycount -eq 0 ] && [ $failcount -gt 0 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Accuracy..............10/10"
@@ -72,29 +86,43 @@ else
 	make
 	./app testcases/multifailure.conf
 fi
-joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | uniq | wc -l`
+joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
 if [ $joincount -eq 100 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Join..................10/10"
 else
-	echo "Checking Join..................0/10"
+	joinfrom=`grep joined dbg.log | cut -d" " -f2 | sort -u`
+	cnt=0
+	for i in $joinfrom
+	do
+		jointo=`grep joined dbg.log | grep '^ '$i | cut -d" " -f4-7 | grep -v $i | sort -u | wc -l`
+		if [ $jointo -eq 9 ]; then
+			cnt=`expr $cnt + 1`
+		fi
+	done
+	if [ $cnt -eq 10 ]; then
+		grade=`expr $grade + 10`
+		echo "Checking Join..................10/10"
+	else
+		echo "Checking Join..................0/10"
+	fi
 fi
-failednode=`grep failed dbg.log | uniq | awk '{print $1}'`
+failednode=`grep failed dbg.log | sort -u | awk '{print $1}'`
 tmp=0
 for i in $failednode
 do
-	failcount=`grep removed dbg.log | uniq | grep $i | wc -l`
+	failcount=`grep removed dbg.log | sort -u | grep $i | wc -l`
 	if [ $failcount -ge 5 ]; then
 		tmp=`expr $tmp + 2`
 		grade=`expr $grade + 2`
 	fi
 done
 echo "Checking Completeness..........$tmp/10"
-failednode=`grep failed dbg.log | uniq | awk '{print $1}'`
+failednode=`grep failed dbg.log | sort -u | awk '{print $1}'`
 tmp=0
 for i in $failednode
 do
-	accuracycount=`grep removed dbg.log | uniq | grep -v $i | wc -l`
+	accuracycount=`grep removed dbg.log | sort -u | grep -v $i | wc -l`
 	if [ $accuracycount -eq 20 ]; then
 		tmp=`expr $tmp + 2`
 		grade=`expr $grade + 2`
@@ -118,23 +146,37 @@ if [ $joincount -eq 100 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Join..................10/10"
 else
-	echo "Checking Join..................0/10"
+	joinfrom=`grep joined dbg.log | cut -d" " -f2 | sort -u`
+	cnt=0
+	for i in $joinfrom
+	do
+		jointo=`grep joined dbg.log | grep '^ '$i | cut -d" " -f4-7 | grep -v $i | sort -u | wc -l`
+		if [ $jointo -eq 9 ]; then
+			cnt=`expr $cnt + 1`
+		fi
+	done
+	if [ $cnt -eq 10 ]; then
+		grade=`expr $grade + 10`
+		echo "Checking Join..................10/10"
+	else
+		echo "Checking Join..................0/10"
+	fi
 fi
-failednode=`grep failed dbg.log | uniq | awk '{print $1}'`
-failcount=`grep removed dbg.log | uniq | grep $failednode | wc -l`
+failednode=`grep failed dbg.log | sort -u | awk '{print $1}'`
+failcount=`grep removed dbg.log | sort -u | grep $failednode | wc -l`
 if [ $failcount -ge 9 ]; then
 	grade=`expr $grade + 10`
 	echo "Checking Completeness..........10/10"
 else
 	echo "Checking Completeness..........0/10"
 fi
-failednode=`grep failed dbg.log | uniq | awk '{print $1}'`
-accuracycount=`grep removed dbg.log | uniq | grep -v $failednode | wc -l`
-if [ $accuracycount -eq 0 ] && [ $failcount -gt 0 ]; then
-	grade=`expr $grade + 10`
-	echo "Checking Accuracy..............10/10"
-else
-	echo "Checking Accuracy..............0/10"
-fi
+#failednode=`grep failed dbg.log | sort -u | awk '{print $1}'`
+#accuracycount=`grep removed dbg.log | sort -u | grep -v $failednode | wc -l`
+#if [ $accuracycount -eq 0 ] && [ $failcount -gt 0 ]; then
+#	grade=`expr $grade + 10`
+#	echo "Checking Accuracy..............10/10"
+#else
+#	echo "Checking Accuracy..............0/10"
+#fi
 echo "============================================"
-echo Final Grade $grade/90
+echo Final Grade $grade/80

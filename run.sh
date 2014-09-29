@@ -7,8 +7,8 @@
 #* 
 #***********************
 #!/bin/sh
-wget https://spark-public.s3.amazonaws.com/cloudcomputing/assignments/mp1/mp1.zip
-unzip mp1.zip
+wget https://spark-public.s3.amazonaws.com/cloudcomputing/assignments/mp1/mp1.zip || { echo 'ERROR ... Please install wget' ; exit 1; }
+unzip mp1.zip || { echo 'ERROR ... Zip file not found' ; exit 1; }
 cd mp1
 cp ../mp1_node.* .
 make clean > /dev/null
