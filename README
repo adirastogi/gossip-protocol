@@ -3,6 +3,9 @@ MP1 README
 -------------------------------------------------------------------------------
 AUTHORS
 -------------------------------------------------------------------------------
+Gossip protocol implementation by Aditya Rastogi (arastog2@illinois.edu) (MP1Node.h/.c)
+Template code, testcases and infrastructure code implementation provided by intructors
+of the Fall 2014 CS 425 course at University of Illinois Urbana-Champaign 
 
 -------------------------------------------------------------------------------
 FILES
